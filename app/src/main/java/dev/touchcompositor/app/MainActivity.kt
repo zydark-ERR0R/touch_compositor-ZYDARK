@@ -52,12 +52,12 @@ class MainActivity : Activity() {
         if (!destroyed) runOnUiThread { refreshShizuku() }
     }
     private val binderDead = Shizuku.OnBinderDeadListener {
-        if (!destroyed) runOnUiThread { showNeedSetup("Shizuku 已停止，请重新启动") }
+        if (!destroyed) runOnUiThread { showNeedSetup("تم إيقاف Shizuku، يرجى إعادة التشغيل") }
     }
     private val permissionResult = Shizuku.OnRequestPermissionResultListener { code, result ->
         if (code == 100 && !destroyed) runOnUiThread {
             if (result == PackageManager.PERMISSION_GRANTED) ensureEnvironmentAsync()
-            else showNeedSetup("未获得 Shizuku 授权，可在 Shizuku 的应用管理中修改")
+            else showNeedSetup("لم يتم منح إذن Shizuku، يمكنك تعديله من إدارة تطبيقات Shizuku")
         }
     }
 
@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         run { window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR }
         setContentView(buildUi())
         refreshOverlayPermission()
-        showNeedSetup("请先启动 Shizuku，再授权此应用")
+        showNeedSetup("يرجى تشغيل Shizuku أولاً، ثم منح الإذن لهذا التطبيق")
         Shizuku.addBinderReceivedListenerSticky(binderReceived)
         Shizuku.addBinderDeadListener(binderDead)
         Shizuku.addRequestPermissionResultListener(permissionResult)
@@ -84,7 +84,7 @@ class MainActivity : Activity() {
 
     private fun refreshShizuku() {
         if (RuntimeEnvironment.authorized) ensureEnvironmentAsync()
-        else showNeedSetup(if (RuntimeEnvironment.available) "请授权此应用使用 Shizuku" else "请先在 Shizuku 中启动服务")
+        else showNeedSetup(if (RuntimeEnvironment.available) "يرجى منح هذا التطبيق إذن استخدام Shizuku" else "يرجى تشغيل الخدمة في Shizuku أولاً")
     }
 
     override fun onDestroy() {
@@ -112,7 +112,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         })
         root.addView(TextView(this).apply {
-            text = "通过 Shizuku 启动触控合成"
+            text = "تشغيل تركيب اللمس عبر Shizuku"
             textSize = 14f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(22))
@@ -127,7 +127,7 @@ class MainActivity : Activity() {
         root.addView(readyCard)
 
         root.addView(TextView(this).apply {
-            text = "无线调试的配对与启动由 Shizuku 管理。本应用仅请求 Shizuku 授权，以运行触控合成服务。"
+            text = "يتم إدارة الاقتران والتشغيل للتصحيح اللاسلكي بواسطة Shizuku. هذا التطبيق يطلب فقط إذن Shizuku لتشغيل خدمة تركيب اللمس."
             textSize = 11.5f
             setTextColor(muted)
             setLineSpacing(0f, 1.18f)
@@ -145,7 +145,7 @@ class MainActivity : Activity() {
         row.addView(statusDot, LinearLayout.LayoutParams(dp(10), dp(10)).apply { rightMargin = dp(11) })
         val texts = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
         statusTitle = TextView(this@MainActivity).apply {
-            text = "正在检查"
+            text = "جارٍ الفحص"
             textSize = 16f
             setTextColor(ink)
             typeface = Typeface.DEFAULT_BOLD
@@ -164,30 +164,30 @@ class MainActivity : Activity() {
     }
 
     private fun setupCardView(): View = cardLayout().apply {
-        setupTitle = cardTitle("Shizuku 设置")
+        setupTitle = cardTitle("إعداد Shizuku")
         addView(setupTitle)
-        setupDescription = bodyText("先在 Shizuku 中启动服务，再返回这里授权并启动。")
+        setupDescription = bodyText("قم بتشغيل الخدمة في Shizuku أولاً، ثم عد هنا للمنح والتشغيل.")
         addView(setupDescription)
-        addView(primaryButton("授权并启动") {
+        addView(primaryButton("منح الإذن والتشغيل") {
             when {
-                !RuntimeEnvironment.available -> showNeedSetup("请先打开 Shizuku 并启动服务")
+                !RuntimeEnvironment.available -> showNeedSetup("يرجى فتح Shizuku وتشغيل الخدمة أولاً")
                 RuntimeEnvironment.authorized -> ensureEnvironmentAsync()
                 else -> runCatching { Shizuku.requestPermission(100) }
-                    .onFailure { showNeedSetup(it.message ?: "请求授权失败") }
+                    .onFailure { showNeedSetup(it.message ?: "فشل طلب الإذن") }
             }
         }, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(12) })
-        addView(secondaryButton("打开 Shizuku") { openShizuku() }, LinearLayout.LayoutParams(-1, dp(46)))
+        addView(secondaryButton("فتح Shizuku") { openShizuku() }, LinearLayout.LayoutParams(-1, dp(46)))
     }
 
     private fun openShizuku() {
         val intent = packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
         if (intent != null) startActivity(intent)
-        else showNeedSetup("未找到 Shizuku，请先安装并启动")
+        else showNeedSetup("لم يتم العثور على Shizuku، يرجى تثبيته وتشغيله أولاً")
     }
 
     private fun readyCardView(): View = cardLayout().apply {
         visibility = View.GONE
-        addView(cardTitle("可以使用"))
+        addView(cardTitle("جاهز للاستخدام"))
         val row = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -196,15 +196,15 @@ class MainActivity : Activity() {
         overlayDot = View(this@MainActivity).apply { background = circle(Color.GRAY) }
         row.addView(overlayDot, LinearLayout.LayoutParams(dp(9), dp(9)).apply { rightMargin = dp(10) })
         overlayText = TextView(this@MainActivity).apply {
-            text = "检查悬浮窗权限"
+            text = "فحص إذن النافذة العائمة"
             textSize = 13f
             setTextColor(ink)
         }
         row.addView(overlayText, LinearLayout.LayoutParams(0, dp(40), 1f).apply { gravity = Gravity.CENTER_VERTICAL })
-        row.addView(textButton("设置") { requestOverlayPermission() })
+        row.addView(textButton("الإعدادات") { requestOverlayPermission() })
         addView(row)
 
-        startButton = primaryButton("启动悬浮工具") { launchOverlay() }
+        startButton = primaryButton("تشغيل الأدوات العائمة") { launchOverlay() }
         addView(startButton, LinearLayout.LayoutParams(-1, dp(52)))
 
         val actions = LinearLayout(this@MainActivity).apply {
@@ -212,20 +212,20 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(9), 0, 0)
         }
-        actions.addView(textButton("重启运行环境") { restartEnvironment() }, LinearLayout.LayoutParams(0, dp(38), 1f))
-        actions.addView(textButton("管理 Shizuku 授权") { openShizuku() }, LinearLayout.LayoutParams(0, dp(38), 1f))
+        actions.addView(textButton("إعادة تشغيل البيئة") { restartEnvironment() }, LinearLayout.LayoutParams(0, dp(38), 1f))
+        actions.addView(textButton("إدارة إذن Shizuku") { openShizuku() }, LinearLayout.LayoutParams(0, dp(38), 1f))
         addView(actions)
     }
 
     private fun ensureEnvironmentAsync() {
         if (!workInFlight.compareAndSet(false, true)) return
-        showBusy("正在启动运行环境", "正在通过 Shizuku 启动触控服务…")
+        showBusy("جارٍ تشغيل البيئة", "جارٍ تشغيل خدمة اللمس عبر Shizuku…")
         io.execute {
             val result = environment.ensureReady()
             workInFlight.set(false)
             runOnUiThread {
                 if (!destroyed) result.onSuccess { showReady() }
-                    .onFailure { showNeedSetup(it.message ?: "无法启动触控服务") }
+                    .onFailure { showNeedSetup(it.message ?: "تعذر تشغيل خدمة اللمس") }
             }
         }
     }
@@ -233,13 +233,13 @@ class MainActivity : Activity() {
     private fun restartEnvironment() {
         if (!workInFlight.compareAndSet(false, true)) return
         runtimeReady = false
-        showBusy("正在重启运行环境", "")
+        showBusy("جارٍ إعادة تشغيل البيئة", "")
         io.execute {
             val result = environment.restart()
             workInFlight.set(false)
             runOnUiThread {
                 if (!destroyed) result.onSuccess { showReady() }
-                    .onFailure { showNeedSetup(it.message ?: "重启失败") }
+                    .onFailure { showNeedSetup(it.message ?: "فشلت إعادة التشغيل") }
             }
         }
     }
@@ -260,9 +260,9 @@ class MainActivity : Activity() {
     private fun showReady() {
         runtimeReady = true
         statusDot.background = circle(green)
-        statusTitle.text = "运行环境已就绪"
+        statusTitle.text = "البيئة جاهزة"
         statusTitle.setTextColor(green)
-        statusDetail.text = "可以直接启动悬浮工具"
+        statusDetail.text = "يمكنك تشغيل الأدوات العائمة مباشرة"
         setupCard.visibility = View.GONE
         readyCard.visibility = View.VISIBLE
         refreshOverlayPermission()
@@ -271,7 +271,7 @@ class MainActivity : Activity() {
     private fun showNeedSetup(detail: String) {
         runtimeReady = false
         statusDot.background = circle(amber)
-        statusTitle.text = "需要 Shizuku 服务与授权"
+        statusTitle.text = "تحتاج إلى خدمة Shizuku والإذن"
         statusTitle.setTextColor(amber)
         statusDetail.text = detail
         setupCard.visibility = View.VISIBLE
@@ -292,11 +292,10 @@ class MainActivity : Activity() {
         if (!::overlayDot.isInitialized) return
         val allowed = Settings.canDrawOverlays(this)
         overlayDot.background = circle(if (allowed) green else red)
-        overlayText.text = if (allowed) "悬浮窗已授权" else "需要悬浮窗权限"
+        overlayText.text = if (allowed) "تم منح إذن النافذة العائمة" else "تحتاج إلى إذن النافذة العائمة"
         overlayText.setTextColor(if (allowed) green else red)
         startButton.alpha = if (allowed) 1f else 0.75f
     }
-
 
     private fun requestOverlayPermission() {
         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -332,7 +331,6 @@ class MainActivity : Activity() {
         setPadding(dp(8), 0, dp(8), 0); setOnClickListener { click() }
     }
 
-    private fun divider() = View(this).apply { setBackgroundColor(Color.rgb(234, 236, 240)) }
     private fun gap() = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(14)) }
 
     private fun rounded(fill: Int, radiusDp: Float, stroke: Int? = null) = GradientDrawable().apply {
