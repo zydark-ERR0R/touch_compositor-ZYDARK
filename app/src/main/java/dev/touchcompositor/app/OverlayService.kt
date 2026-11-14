@@ -34,10 +34,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Compact product overlay:
- * - tiny top entry opens macro-edit mode and compact mode controls
- * - recording/configuration use readable transient management windows
- * - macro triggers remain unobtrusive in normal use and become editable only in edit mode
+ * واجهة عائمة مدمجة:
+ * - مدخل علوي صغير يفتح وضع تحرير الماكرو وأدوات التحكم المدمجة
+ * - التسجيل والإعدادات تستخدم نوافذ إدارة مؤقتة مقروءة
+ * - مشغلات الماكرو تبقى غير مزعجة في الاستخدام العادي وتصبح قابلة للتحرير فقط في وضع التحرير
  */
 class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     companion object {
@@ -56,7 +56,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
     private var profiles = mutableListOf<MacroProfile>()
     private var activeProfileId: String? = null
-    private var runtimeStatus = "Runtime 未连接"
+    private var runtimeStatus = "بيئة التشغيل غير متصلة"
     private val runtimeRecoveryInFlight = AtomicBoolean(false)
     @Volatile private var serviceDestroying = false
     private var recording = false
@@ -162,21 +162,19 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         }
     }
 
-    // Runtime -----------------------------------------------------------------
+    // بيئة التشغيل ---------------------------------------------------------------
 
     private fun connectRuntime() {
         io.execute {
             runCatching { client.connect() }
                 .onSuccess { requestStatus() }
-                .onFailure { t -> main.post { runtimeStatus = "Runtime 未连接 · ${t.message ?: "连接失败"}" } }
+                .onFailure { t -> main.post { runtimeStatus = "بيئة التشغيل غير متصلة · ${t.message ?: "فشل الاتصال"}" } }
         }
     }
 
     override fun onConnected(ready: String) {
         main.post {
             runtimeStatus = ready.removePrefix("READY touch-runtime-v1 ")
-            // Runtime state is ephemeral. A reconnect/restart loses raw trigger regions,
-            // so always restore them from the current UI/profile state.
             syncRuntimeTriggerRegions()
             routedWindows.sync()
         }
@@ -184,7 +182,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
     override fun onDisconnected(message: String) {
         if (serviceDestroying) return
-        main.post { runtimeStatus = "Runtime 已断开 · 正在恢复"; cancelRawTriggerHolds(); if (macroRunner.isRunning) macroRunner.stop(); routedWindows.suspendRouting() }
+        main.post { runtimeStatus = "بيئة التشغيل انقطعت · جارٍ الاستعادة"; cancelRawTriggerHolds(); if (macroRunner.isRunning) macroRunner.stop(); routedWindows.suspendRouting() }
         recoverRuntime()
     }
 
@@ -202,9 +200,9 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
             result.onSuccess {
                 runCatching { client.connect() }
                     .onSuccess { requestStatus() }
-                    .onFailure { t -> main.post { runtimeStatus = "Runtime 恢复失败 · ${t.message ?: "重连失败"}" } }
+                    .onFailure { t -> main.post { runtimeStatus = "فشل استعادة بيئة التشغيل · ${t.message ?: "فشل إعادة الاتصال"}" } }
             }.onFailure { t ->
-                main.post { runtimeStatus = "Runtime 恢复失败 · ${t.message ?: "请重新打开主界面"}" }
+                main.post { runtimeStatus = "فشل استعادة بيئة التشغيل · ${t.message ?: "يرجى إعادة فتح الواجهة الرئيسية"}" }
             }
         }
     }
@@ -214,8 +212,6 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
             val parts = line.split(' ')
             when (parts.firstOrNull()) {
                 "DISPLAY_CHANGED" -> {
-                    // Runtime owns Display 0 state. Re-measure overlay windows so raw
-                    // trigger rectangles are regenerated in the new screen space.
                     if (!recording && positionEditorView == null) syncTriggerButtons()
                 }
                 "UI_TOUCH" -> routedWindows.onTouch(parts)
@@ -232,13 +228,12 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         main.post {
             runningMacroId = null
             rawTriggerHoldStarted.clear()
-            if (error != null) runtimeStatus = "宏错误 · $error"
+            if (error != null) runtimeStatus = "خطأ في الماكرو · $error"
             refreshTriggerVisuals()
         }
     }
 
-    /** Macro state changes must not recreate overlay windows: rebuilding a trigger
-     * briefly exposes WindowManager's parent-frame coordinates before global alignment. */
+    /** تغييرات حالة الماكرو يجب ألا تعيد إنشاء نوافذ الطبقة العائمة. */
     private fun refreshTriggerVisuals() {
         triggerViews.forEach { (id, view) ->
             val editing = uiMode == UiMode.MACROS && editingMacroId == id
@@ -269,7 +264,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         }
     }
 
-    // Top entry + compact mode menu -------------------------------------------
+    // المدخل العلوي + قائمة الوضع المدمجة ---------------------------------------
 
     private fun showEntry() {
         if (!Settings.canDrawOverlays(this) || entryView != null || recording) return
@@ -293,7 +288,6 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val params = overlayParams(w, h, Gravity.TOP or Gravity.START).apply {
             x = ((resources.displayMetrics.widthPixels - w) / 2).coerceAtLeast(0)
             y = dp(2)
-
         }
         routedWindows.addView(view, params)
         entryView = view
@@ -312,22 +306,22 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val startX = ((resources.displayMetrics.widthPixels - total) / 2).coerceAtLeast(0)
         val y = dp(28)
         val specs = listOf(
-            Triple("录制", Color.argb(184, 190, 57, 55), {
+            Triple("تسجيل", Color.argb(184, 190, 57, 55), {
                 hideMainMenu()
                 exitMacroEditMode(UiMode.RECORDINGS)
                 showRecordingManager()
             }),
-            Triple("配置", Color.argb(184, 52, 103, 215), {
+            Triple("إعدادات", Color.argb(184, 52, 103, 215), {
                 hideMainMenu()
                 exitMacroEditMode(UiMode.CONFIGS)
                 showMacroManager()
             }),
-            Triple("+宏", Color.argb(176, 56, 137, 105), {
+            Triple("+ماكرو", Color.argb(176, 56, 137, 105), {
                 hideMainMenu()
                 if (uiMode != UiMode.MACROS) enterMacroEditMode()
                 createMacro()
             }),
-            Triple("隐藏", Color.argb(170, 42, 46, 53), {
+            Triple("إخفاء", Color.argb(170, 42, 46, 53), {
                 hideMainMenu()
                 exitMacroEditMode(UiMode.NONE)
             }),
@@ -369,7 +363,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         syncTriggerButtons()
     }
 
-    /** Enter normal runtime mode from any transient management surface. */
+    /** الدخول إلى وضع التشغيل العادي من أي سطح إدارة مؤقت. */
     private fun enterRuntimeMode() {
         cancelRawTriggerHolds()
         editingMacroId = null
@@ -378,7 +372,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         syncTriggerButtons()
     }
 
-    // Profiles / macro edit mode ---------------------------------------------
+    // الإعدادات / وضع تحرير الماكرو -----------------------------------------------
 
     private fun activeProfile(): MacroProfile {
         ensureProfile()
@@ -389,14 +383,14 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     }
 
     private fun ensureProfile() {
-        if (profiles.isEmpty()) profiles += MacroProfile(name = "配置 1")
+        if (profiles.isEmpty()) profiles += MacroProfile(name = "الإعداد 1")
     }
 
     private fun showMacroManager() {
         hideMacroManager()
         if (recording || uiMode != UiMode.CONFIGS) return
         val root = panelRoot()
-        root.addView(panelHeader("配置") { hideMacroManager(); enterRuntimeMode() })
+        root.addView(panelHeader("الإعدادات") { hideMacroManager(); enterRuntimeMode() })
 
         val profileRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         profiles.forEach { profile ->
@@ -416,17 +410,17 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
         val active = activeProfile()
         val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val nameInput = compactInput(active.name, "配置名称")
+        val nameInput = compactInput(active.name, "اسم الإعداد")
         nameRow.addView(nameInput, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(6) })
-        nameRow.addView(compactTextButton("保存") {
-            active.name = nameInput.text.toString().trim().ifBlank { "配置" }
+        nameRow.addView(compactTextButton("حفظ") {
+            active.name = nameInput.text.toString().trim().ifBlank { "إعداد" }
             saveProfiles(); showMacroManager()
         }, LinearLayout.LayoutParams(dp(58), dp(40)).apply { rightMargin = dp(5) })
-        nameRow.addView(compactTextButton("删除") { deleteProfile(active) }, LinearLayout.LayoutParams(dp(58), dp(40)))
+        nameRow.addView(compactTextButton("حذف") { deleteProfile(active) }, LinearLayout.LayoutParams(dp(58), dp(40)))
         root.addView(nameRow, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(7) })
 
         root.addView(TextView(this).apply {
-            text = "选择配置后进入普通运行态；再次展开顶部入口即可编辑触发器。"
+            text = "اختر إعداداً للدخول إلى وضع التشغيل العادي؛ افتح المدخل العلوي مرة أخرى لتعديل المشغلات."
             textSize = 10.5f; setTextColor(muted); gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(2), dp(7), dp(2), dp(2))
         }, LinearLayout.LayoutParams(-1, dp(42)))
@@ -443,7 +437,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     }
 
     private fun createProfile() {
-        val profile = MacroProfile(name = "配置 ${profiles.size + 1}")
+        val profile = MacroProfile(name = "الإعداد ${profiles.size + 1}")
         profiles += profile
         activeProfileId = profile.id
         saveProfiles(); macroStore.saveActiveProfileId(profile.id)
@@ -465,14 +459,14 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val n = profile.macros.size + 1
         val offset = (profile.macros.size % 6) * 0.065f
         val macro = TouchMacro(
-            name = "宏 $n",
+            name = "ماكرو $n",
             trigger = MacroTrigger(MacroTriggerMode.CLICK_ONCE, 0.88f, (0.34f + offset).coerceAtMost(0.80f), 46f),
         )
         profile.macros += macro
         saveProfiles(); syncTriggerButtons(); showMacroEditor(macro)
     }
 
-    // Trigger buttons ----------------------------------------------------------
+    // أزرار المشغل ---------------------------------------------------------------
 
     private fun syncTriggerButtons() {
         val generation = ++triggerGeometryGeneration
@@ -482,8 +476,6 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
                 showMacroTrigger(macro, index, generation)
             }
         }
-        // Edit/recording modes must disable raw hit regions immediately. Runtime
-        // mode waits until every trigger has a measured global window bound.
         syncRuntimeTriggerRegions(generation)
     }
 
@@ -505,13 +497,10 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
             background = triggerBackground(editing, running); elevation = dp(5).toFloat()
         }
         val params = overlayParams(size, size, Gravity.TOP or Gravity.START).apply {
-            // Trigger geometry is full Display 0 screen space. Disable system-bar
-            // fitting for this window so TOP|START x/y use that same origin directly.
             setFitInsetsTypes(0)
             flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             x = (desiredCenter.x - size / 2f).roundToInt().coerceIn(0, (screenW - size).coerceAtLeast(0))
             y = (desiredCenter.y - size / 2f).roundToInt().coerceIn(0, (screenH - size).coerceAtLeast(0))
-
         }
         if (uiMode == UiMode.MACROS) installTriggerTouch(view, params, macro, size)
         else view.setOnTouchListener { _, event ->
@@ -612,21 +601,21 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     }.getOrElse {
         source?.background = rounded(Color.argb(205, 204, 66, 63), macro.trigger.sizeDp / 2f)
         source?.postDelayed({ source.background = triggerBackground(false, false) }, 550)
-        runtimeStatus = "宏错误 · ${it.message ?: it.javaClass.simpleName}"; false
+        runtimeStatus = "خطأ في الماكرو · ${it.message ?: it.javaClass.simpleName}"; false
     }
 
-    // Recording manager --------------------------------------------------------
+    // مدير التسجيل ---------------------------------------------------------------
 
     private fun showRecordingManager() {
         hideRecordingManager()
         if (recording || uiMode != UiMode.RECORDINGS) return
         val root = panelRoot()
-        root.addView(panelHeader("录制动作") { hideRecordingManager(); enterRuntimeMode() })
+        root.addView(panelHeader("تسجيل الإجراءات") { hideRecordingManager(); enterRuntimeMode() })
 
         val create = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val labelInput = compactInput("", "新录制名称")
+        val labelInput = compactInput("", "اسم التسجيل الجديد")
         create.addView(labelInput, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(7) })
-        create.addView(compactTextButton("开始录制") {
+        create.addView(compactTextButton("بدء التسجيل") {
             startOverlayRecording(labelInput.text.toString().trim())
         }, LinearLayout.LayoutParams(dp(86), dp(40)))
         root.addView(create, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
@@ -639,7 +628,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
             if (uiMode != UiMode.RECORDINGS || recordingManagerView == null) return@requestAsync
             val names = parseRecordingNames(response)
             list.removeAllViews()
-            if (names.isEmpty()) list.addView(note("还没有录制动作"))
+            if (names.isEmpty()) list.addView(note("لا توجد إجراءات مسجلة بعد"))
             names.forEach { name -> list.addView(recordingManagerRow(name)) }
         }
 
@@ -658,9 +647,9 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
             addView(TextView(this@OverlayService).apply { text = recordingLabel(name); textSize = 12.5f; setTextColor(ink); typeface = Typeface.DEFAULT_BOLD })
             addView(TextView(this@OverlayService).apply { text = name; textSize = 9.5f; setTextColor(muted) })
         }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        row.addView(smallAction("播放") { requestAsync("PLAY $name 1.0 1") {} })
-        row.addView(smallAction("改名") { showNameEditor("录制名称", recordingLabel(name)) { setRecordingLabel(name, it); showRecordingManager() } })
-        row.addView(smallAction("删除", danger = true) {
+        row.addView(smallAction("تشغيل") { requestAsync("PLAY $name 1.0 1") {} })
+        row.addView(smallAction("إعادة تسمية") { showNameEditor("اسم التسجيل", recordingLabel(name)) { setRecordingLabel(name, it); showRecordingManager() } })
+        row.addView(smallAction("حذف", danger = true) {
             requestAsync("DELETE $name") { recordingLabels.edit().remove(name).apply(); showRecordingManager() }
         })
         return row.apply { layoutParams = LinearLayout.LayoutParams(-1, dp(58)).apply { bottomMargin = dp(6) } }
@@ -670,7 +659,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         recordingManagerView?.let { runCatching { routedWindows.removeView(it) } }; recordingManagerView = null
     }
 
-    // Trigger-bound macro editor ----------------------------------------------
+    // محرر الماكرو المرتبط بالمشغل -----------------------------------------------
 
     private fun showMacroEditor(macro: TouchMacro) {
         if (uiMode != UiMode.MACROS) return
@@ -680,40 +669,40 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
         val content = panelRoot()
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val macroName = compactInput(macro.name, "宏名称")
+        val macroName = compactInput(macro.name, "اسم الماكرو")
         header.addView(macroName, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(6) })
-        header.addView(compactTextButton("保存") { macro.name = macroName.text.toString().trim().ifBlank { "宏" }; saveProfiles(); showMacroEditor(macro) }, LinearLayout.LayoutParams(dp(56), dp(40)).apply { rightMargin = dp(5) })
-        header.addView(compactTextButton("完成") { closeMacroEditor() }, LinearLayout.LayoutParams(dp(56), dp(40)))
+        header.addView(compactTextButton("حفظ") { macro.name = macroName.text.toString().trim().ifBlank { "ماكرو" }; saveProfiles(); showMacroEditor(macro) }, LinearLayout.LayoutParams(dp(56), dp(40)).apply { rightMargin = dp(5) })
+        header.addView(compactTextButton("تم") { closeMacroEditor() }, LinearLayout.LayoutParams(dp(56), dp(40)))
         content.addView(header)
 
         val triggerSettings = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        triggerSettings.addView(TextView(this).apply { text = "触发"; textSize = 11f; setTextColor(muted) }, LinearLayout.LayoutParams(dp(40), dp(38)))
-        triggerSettings.addView(modeChoice("点击单次", macro.trigger.mode == MacroTriggerMode.CLICK_ONCE) { macro.trigger.mode = MacroTriggerMode.CLICK_ONCE; saveProfiles(); syncTriggerButtons(); showMacroEditor(macro) })
-        triggerSettings.addView(modeChoice("长按循环", macro.trigger.mode == MacroTriggerMode.HOLD_REPEAT) { macro.trigger.mode = MacroTriggerMode.HOLD_REPEAT; saveProfiles(); syncTriggerButtons(); showMacroEditor(macro) })
+        triggerSettings.addView(TextView(this).apply { text = "المشغل"; textSize = 11f; setTextColor(muted) }, LinearLayout.LayoutParams(dp(40), dp(38)))
+        triggerSettings.addView(modeChoice("نقرة واحدة", macro.trigger.mode == MacroTriggerMode.CLICK_ONCE) { macro.trigger.mode = MacroTriggerMode.CLICK_ONCE; saveProfiles(); syncTriggerButtons(); showMacroEditor(macro) })
+        triggerSettings.addView(modeChoice("ضغط مطول", macro.trigger.mode == MacroTriggerMode.HOLD_REPEAT) { macro.trigger.mode = MacroTriggerMode.HOLD_REPEAT; saveProfiles(); syncTriggerButtons(); showMacroEditor(macro) })
         triggerSettings.addView(smallAction("−") { resizeTrigger(macro, -4f) })
         triggerSettings.addView(TextView(this).apply { text = "${macro.trigger.sizeDp.toInt()}"; gravity = Gravity.CENTER; textSize = 10.5f; setTextColor(muted) }, LinearLayout.LayoutParams(dp(34), dp(38)))
         triggerSettings.addView(smallAction("+") { resizeTrigger(macro, 4f) })
         content.addView(triggerSettings, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(6) })
 
-        content.addView(sectionLabel("动作 · 顺序执行"), LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(5) })
+        content.addView(sectionLabel("الإجراءات · تنفيذ متسلسل"), LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(5) })
         val actionList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         macro.actions.forEachIndexed { index, action -> actionList.addView(actionRow(macro, index, action)) }
-        if (macro.actions.isEmpty()) actionList.addView(note("还没有动作"))
+        if (macro.actions.isEmpty()) actionList.addView(note("لا توجد إجراءات بعد"))
         content.addView(MaxHeightScrollView(this).apply { maxHeightPx = dp(300); addView(actionList, ViewGroup.LayoutParams(-1, -2)) })
 
         val addRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         listOf(
-            "+ 点击" to { showTapPositionEditor(macro, null) },
-            "+ 拖动" to { showDragPositionEditor(macro, null) },
-            "+ 等待" to { macro.actions += MacroAction.Wait(500); selectedActionIndex = macro.actions.lastIndex; saveProfiles(); showMacroEditor(macro) },
-            "+ 录制" to { showRecordingPicker(macro, null) },
+            "+ نقرة" to { showTapPositionEditor(macro, null) },
+            "+ سحب" to { showDragPositionEditor(macro, null) },
+            "+ انتظار" to { macro.actions += MacroAction.Wait(500); selectedActionIndex = macro.actions.lastIndex; saveProfiles(); showMacroEditor(macro) },
+            "+ تسجيل" to { showRecordingPicker(macro, null) },
         ).forEachIndexed { i, (label, action) ->
             addRow.addView(compactTextButton(label) { action() }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { if (i < 3) rightMargin = dp(5) })
         }
         content.addView(addRow, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(7) })
 
         selectedActionIndex?.let { index -> macro.actions.getOrNull(index)?.let { content.addView(actionDetail(macro, index, it), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }) } }
-        content.addView(compactTextButton("删除这个宏", danger = true) { deleteMacro(macro) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(8) })
+        content.addView(compactTextButton("حذف هذا الماكرو", danger = true) { deleteMacro(macro) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(8) })
 
         val width = minOf(dp(350), resources.displayMetrics.widthPixels - dp(18))
         val maxH = (resources.displayMetrics.heightPixels * 0.72f).toInt()
@@ -741,38 +730,38 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
     private fun actionDetail(macro: TouchMacro, index: Int, action: MacroAction): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(8), dp(10), dp(9)); background = rounded(Color.argb(220, 246, 248, 251), 11f, Color.argb(75, 120, 126, 138))
-        addView(sectionLabel("编辑 ${index + 1}. ${actionTitle(action)}"))
+        addView(sectionLabel("تعديل ${index + 1}. ${actionTitle(action)}"))
         when (action) {
             is MacroAction.Tap -> {
-                addView(parameterRow("按压时间", "${action.holdMs} ms", { action.holdMs = (action.holdMs - 20).coerceAtLeast(20); saveProfiles(); showMacroEditor(macro) }, { action.holdMs = (action.holdMs + 20).coerceAtMost(5000); saveProfiles(); showMacroEditor(macro) }))
-                addView(compactTextButton("可视化设置点击位置") { showTapPositionEditor(macro, index) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+                addView(parameterRow("مدة الضغط", "${action.holdMs} ms", { action.holdMs = (action.holdMs - 20).coerceAtLeast(20); saveProfiles(); showMacroEditor(macro) }, { action.holdMs = (action.holdMs + 20).coerceAtMost(5000); saveProfiles(); showMacroEditor(macro) }))
+                addView(compactTextButton("تعيين موضع النقر بصرياً") { showTapPositionEditor(macro, index) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
             }
             is MacroAction.Drag -> {
-                addView(parameterRow("拖动时间", "${action.durationMs} ms", { action.durationMs = (action.durationMs - 100).coerceAtLeast(50); saveProfiles(); showMacroEditor(macro) }, { action.durationMs = (action.durationMs + 100).coerceAtMost(30000); saveProfiles(); showMacroEditor(macro) }))
-                addView(compactTextButton("可视化设置起点、终点和方向") { showDragPositionEditor(macro, index) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+                addView(parameterRow("مدة السحب", "${action.durationMs} ms", { action.durationMs = (action.durationMs - 100).coerceAtLeast(50); saveProfiles(); showMacroEditor(macro) }, { action.durationMs = (action.durationMs + 100).coerceAtMost(30000); saveProfiles(); showMacroEditor(macro) }))
+                addView(compactTextButton("تعيين نقطة البداية والنهاية والاتجاه بصرياً") { showDragPositionEditor(macro, index) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
             }
             is MacroAction.Wait -> addView(waitDurationSlider(macro, action))
             is MacroAction.Recording -> {
-                addView(parameterRow("播放速度", "${trimSpeed(action.speed)} ×", { action.speed = (action.speed / 2f).coerceAtLeast(0.25f); saveProfiles(); showMacroEditor(macro) }, { action.speed = (action.speed * 2f).coerceAtMost(8f); saveProfiles(); showMacroEditor(macro) }))
-                addView(compactTextButton("更换录制动作 · ${recordingLabel(action.recordingName)}") { showRecordingPicker(macro, index) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+                addView(parameterRow("سرعة التشغيل", "${trimSpeed(action.speed)} ×", { action.speed = (action.speed / 2f).coerceAtLeast(0.25f); saveProfiles(); showMacroEditor(macro) }, { action.speed = (action.speed * 2f).coerceAtMost(8f); saveProfiles(); showMacroEditor(macro) }))
+                addView(compactTextButton("تغيير إجراء التسجيل · ${recordingLabel(action.recordingName)}") { showRecordingPicker(macro, index) }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
             }
         }
     }
 
     private fun waitDurationSlider(macro: TouchMacro, action: MacroAction.Wait): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        val label = sectionLabel("等待时间 · ${action.durationMs} ms")
+        val label = sectionLabel("وقت الانتظار · ${action.durationMs} ms")
         addView(label, LinearLayout.LayoutParams(-1, dp(32)))
         addView(SeekBar(this@OverlayService).apply {
             max = 1000
             progress = action.durationMs.coerceIn(0L, 1000L).toInt()
             keyProgressIncrement = 1
-            contentDescription = "等待时间，0 到 1000 毫秒"
+            contentDescription = "وقت الانتظار، من 0 إلى 1000 مللي ثانية"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
                     if (!fromUser) return
                     action.durationMs = value.toLong()
-                    label.text = "等待时间 · $value ms"
+                    label.text = "وقت الانتظار · $value ms"
                     saveProfiles()
                 }
                 override fun onStartTrackingTouch(bar: SeekBar) {
@@ -798,14 +787,14 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val value = macro.actions.removeAt(index); macro.actions.add(to, value); selectedActionIndex = to; saveProfiles(); showMacroEditor(macro)
     }
 
-    // Recording action picker --------------------------------------------------
+    // منتقي إجراء التسجيل -------------------------------------------------------
 
     private fun showRecordingPicker(macro: TouchMacro, replaceIndex: Int?) {
         hideRecordingPicker()
         requestAsync("LIST") { response ->
             if (editingMacroId != macro.id) return@requestAsync
             val names = parseRecordingNames(response)
-            val root = panelRoot(); root.addView(panelHeader("选择录制动作") { hideRecordingPicker() })
+            val root = panelRoot(); root.addView(panelHeader("اختيار إجراء التسجيل") { hideRecordingPicker() })
             val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             names.forEach { name ->
                 list.addView(compactTextButton(recordingLabel(name)) {
@@ -815,7 +804,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
                     saveProfiles(); hideRecordingPicker(); showMacroEditor(macro)
                 }, LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(5) })
             }
-            if (names.isEmpty()) list.addView(note("暂无录制动作，请先在录制模式创建"))
+            if (names.isEmpty()) list.addView(note("لا توجد إجراءات تسجيل، يرجى إنشاؤها أولاً في وضع التسجيل"))
             root.addView(MaxHeightScrollView(this).apply { maxHeightPx = dp(320); addView(list, ViewGroup.LayoutParams(-1, -2)) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
             val width = minOf(dp(320), resources.displayMetrics.widthPixels - dp(24))
             val p = focusableOverlayParams(width, WindowManager.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {}
@@ -831,8 +820,8 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val input = compactInput(initial, title)
         root.addView(input, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(7) })
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(compactTextButton("取消") { hideNameEditor() }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
-        actions.addView(compactTextButton("保存") { val value = input.text.toString().trim(); if (value.isNotEmpty()) onSave(value); hideNameEditor() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+        actions.addView(compactTextButton("إلغاء") { hideNameEditor() }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
+        actions.addView(compactTextButton("حفظ") { val value = input.text.toString().trim(); if (value.isNotEmpty()) onSave(value); hideNameEditor() }, LinearLayout.LayoutParams(0, dp(40), 1f))
         root.addView(actions, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(7) })
         val p = focusableOverlayParams(minOf(dp(300), resources.displayMetrics.widthPixels - dp(24)), WindowManager.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
         routedWindows.addView(root, p); nameEditorView = root
@@ -840,13 +829,13 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
     private fun hideNameEditor() { nameEditorView?.let { runCatching { routedWindows.removeView(it) } }; nameEditorView = null }
 
-    // Visual tap/drag position editor -----------------------------------------
+    // محرر موضع النقر/السحب المرئي ---------------------------------------------
 
     private fun showTapPositionEditor(macro: TouchMacro, replaceIndex: Int?) {
         val old = replaceIndex?.let { macro.actions.getOrNull(it) as? MacroAction.Tap }
         val start = (old?.x ?: 0.5f) to (old?.y ?: 0.5f)
         val hold = old?.holdMs ?: 70L
-        showPositionEditor("点击", start, null) { a, _ ->
+        showPositionEditor("نقرة", start, null) { a, _ ->
             val value = MacroAction.Tap(a.first, a.second, hold)
             if (replaceIndex == null) {
                 macro.actions += value
@@ -864,7 +853,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val start = (old?.x1 ?: 0.35f) to (old?.y1 ?: 0.55f)
         val end = (old?.x2 ?: 0.65f) to (old?.y2 ?: 0.55f)
         val duration = old?.durationMs ?: 450L
-        showPositionEditor("拖动", start, end) { a, b ->
+        showPositionEditor("سحب", start, end) { a, b ->
             val e = b ?: return@showPositionEditor
             val value = MacroAction.Drag(a.first, a.second, e.first, e.second, duration)
             if (replaceIndex == null) {
@@ -903,11 +892,10 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
             setTextColor(Color.WHITE); background = rounded(Color.argb(205, 52, 103, 215), 23f)
             elevation = dp(7).toFloat()
         }
-        // The tap target is drawn by the guide; keep a larger invisible drag hit area.
         val startHandle: View = if (end == null) View(this).apply {
-            contentDescription = "拖动点击靶心"
-        } else makeHandle("起")
-        val endHandle = if (end != null) makeHandle("终") else null
+            contentDescription = "اسحب هدف النقر"
+        } else makeHandle("بداية")
+        val endHandle = if (end != null) makeHandle("نهاية") else null
         root.addView(startHandle, FrameLayout.LayoutParams(handleSize, handleSize))
         if (endHandle != null) root.addView(endHandle, FrameLayout.LayoutParams(handleSize, handleSize))
 
@@ -954,10 +942,10 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             addView(pill(title, true, false) {})
-            addView(pill("取消", false, false) {
+            addView(pill("إلغاء", false, false) {
                 removePositionEditor(); syncTriggerButtons(); editingMacroId?.let { findMacro(it)?.let(::showMacroEditor) }
             })
-            addView(pill("确定", false, false) {
+            addView(pill("تأكيد", false, false) {
                 val startNormalized = screenGeometry.toNormalized(globalStartX, globalStartY)
                 val endNormalized = if (end != null) screenGeometry.toNormalized(globalEndX, globalEndY) else null
                 val a = startNormalized.x to startNormalized.y
@@ -981,16 +969,16 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         positionEditorView = null
     }
 
-    // Recording ---------------------------------------------------------------
+    // التسجيل -------------------------------------------------------------------
 
     private fun startOverlayRecording(displayName: String = "") {
         if (!client.isConnected) { connectRuntime(); return }
         hideMainMenu(); hideRecordingManager(); hideMacroManager(); hideMacroEditor(); hideRecordingPicker(); hideNameEditor(); hideTriggerButtons(); hideEntry()
         val name = "rec_" + SimpleDateFormat("HHmmss", Locale.US).format(Date())
-        setRecordingLabel(name, displayName.ifBlank { "录制 " + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()) })
+        setRecordingLabel(name, displayName.ifBlank { "تسجيل " + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()) })
         val width = dp(94); val height = dp(34); val right = dp(10); val top = dp(22)
         val view = TextView(this).apply {
-            text = "■ 结束"; gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 11f
+            text = "■ إيقاف"; gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 11f
             typeface = Typeface.DEFAULT_BOLD; background = rounded(Color.argb(198, 195, 57, 55), 17f)
             setOnClickListener { if (recording) stopOverlayRecording(name) }
         }
@@ -1023,7 +1011,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         removeRecordingStop()
         val width = dp(94); val height = dp(34); val right = dp(10); val top = dp(22)
         val view = TextView(this).apply {
-            text = "■ 结束"; gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 11f
+            text = "■ إيقاف"; gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 11f
             typeface = Typeface.DEFAULT_BOLD; background = rounded(Color.argb(198, 195, 57, 55), 17f)
             setOnClickListener { stopOverlayRecording(name) }
         }
@@ -1041,7 +1029,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         recordingStopView = null
     }
 
-    // Persistence / lookup -----------------------------------------------------
+    // الاستمرارية / البحث -------------------------------------------------------
 
     private fun findMacro(id: String): TouchMacro? = profiles.asSequence().flatMap { it.macros.asSequence() }.firstOrNull { it.id == id }
 
@@ -1053,7 +1041,6 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     private fun recordingLabel(name: String): String = recordingLabels.getString(name, null)?.takeIf { it.isNotBlank() } ?: name
     private fun setRecordingLabel(name: String, label: String) { recordingLabels.edit().putString(name, label.trim().ifBlank { name }).apply() }
 
-
     private fun cancelRawTriggerHolds() {
         if (rawTriggerHoldStarted.isNotEmpty()) macroRunner.stop()
         rawTriggerHoldStarted.clear()
@@ -1061,7 +1048,6 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
 
     private fun syncRuntimeTriggerRegions(generation: Long = triggerGeometryGeneration) {
         if (generation != triggerGeometryGeneration) return
-        // Triggers now share the same physical-only routing map and z-order as UI.
         pushRuntimeTriggerRegions(emptyList())
         routedWindows.sync()
     }
@@ -1091,7 +1077,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
                 client.request(command)
             }.onFailure { t ->
                 if (revision == triggerRegionRevision) {
-                    main.post { runtimeStatus = "触发器同步失败 · ${t.message ?: t.javaClass.simpleName}" }
+                    main.post { runtimeStatus = "فشل مزامنة المشغلات · ${t.message ?: t.javaClass.simpleName}" }
                 }
             }
         }
@@ -1105,7 +1091,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
                 if (!client.isConnected) client.connect()
                 client.request(command)
             }.onSuccess { result -> main.post { onSuccess(result) } }
-                .onFailure { t -> main.post { runtimeStatus = "错误 · ${t.message ?: t.javaClass.simpleName}" } }
+                .onFailure { t -> main.post { runtimeStatus = "خطأ · ${t.message ?: t.javaClass.simpleName}" } }
         }
     }
 
@@ -1127,7 +1113,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     private fun panelHeader(title: String, close: () -> Unit): View = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         addView(TextView(this@OverlayService).apply { text = title; textSize = 15f; setTextColor(ink); typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(0, dp(36), 1f))
-        addView(compactTextButton("关闭") { close() }, LinearLayout.LayoutParams(dp(58), dp(36)))
+        addView(compactTextButton("إغلاق") { close() }, LinearLayout.LayoutParams(dp(58), dp(36)))
     }
 
     private fun compactInput(value: String, hintValue: String) = EditText(this).apply {
@@ -1170,15 +1156,15 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
     private fun smallActionView(label: String, click: () -> Unit) = TextView(this).apply { text = label; gravity = Gravity.CENTER; textSize = 15f; setTextColor(accent); setOnClickListener { click() }; layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)) }
 
     private fun actionTitle(action: MacroAction): String = when (action) {
-        is MacroAction.Tap -> "点击"
-        is MacroAction.Drag -> "拖动"
-        is MacroAction.Wait -> "等待"
-        is MacroAction.Recording -> "播放录制"
+        is MacroAction.Tap -> "نقرة"
+        is MacroAction.Drag -> "سحب"
+        is MacroAction.Wait -> "انتظار"
+        is MacroAction.Recording -> "تشغيل تسجيل"
     }
 
     private fun actionSummary(action: MacroAction): String = when (action) {
-        is MacroAction.Tap -> "位置 ${(action.x * 100).toInt()}%, ${(action.y * 100).toInt()}% · ${action.holdMs}ms"
-        is MacroAction.Drag -> "${action.durationMs}ms · ${(action.x1 * 100).toInt()}%,${(action.y1 * 100).toInt()}% → ${(action.x2 * 100).toInt()}%,${(action.y2 * 100).toInt()}%"
+        is MacroAction.Tap -> "الموضع ${(action.x * 100).toInt()}%, ${(action.y * 100).toInt()}% · ${action.holdMs}ms"
+        is MacroAction.Drag -> "${action.durationMs}ms · ${(action.x1 * 100).toInt()}%,${(action.y1 * 100).toInt()}% ← ${(action.x2 * 100).toInt()}%,${(action.y2 * 100).toInt()}%"
         is MacroAction.Wait -> "${action.durationMs}ms"
         is MacroAction.Recording -> "${recordingLabel(action.recordingName)} · ${trimSpeed(action.speed)}×"
     }
@@ -1189,7 +1175,7 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         PixelFormat.TRANSLUCENT,
     ).apply { this.gravity = gravity; softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE }
 
-    // Small UI primitives ------------------------------------------------------
+    // عناصر واجهة صغيرة ---------------------------------------------------------
 
     private fun bubble(label: String, fill: Int, radius: Float, click: () -> Unit) = TextView(this).apply {
         text = label; gravity = Gravity.CENTER; textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD
@@ -1210,31 +1196,11 @@ class OverlayService : Service(), RuntimeClient.Listener, MacroRunner.Listener {
         setOnClickListener { click() }
     }
 
-    private fun valuePill(label: String) = TextView(this).apply {
-        text = label; gravity = Gravity.CENTER; textSize = 10.5f; setTextColor(muted)
-        setPadding(dp(9), 0, dp(9), 0)
-        background = rounded(Color.argb(145, 238, 240, 244), 18f)
-    }
-
-    private fun horizontalStrip(views: List<View>, topMargin: Int = 0): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(2), 0, dp(2), 0)
-        }
-        views.forEach { v -> row.addView(v, LinearLayout.LayoutParams(-2, dp(38)).apply { rightMargin = dp(5) }) }
-        return HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            setBackgroundColor(Color.TRANSPARENT)
-            addView(row, ViewGroup.LayoutParams(-2, dp(38)))
-            if (topMargin > 0) setPadding(0, topMargin, 0, 0)
-        }
-    }
-
     private fun actionShort(action: MacroAction): String = when (action) {
-        is MacroAction.Tap -> "点"
-        is MacroAction.Drag -> "拖"
-        is MacroAction.Wait -> "等"
-        is MacroAction.Recording -> "录"
+        is MacroAction.Tap -> "ن"
+        is MacroAction.Drag -> "س"
+        is MacroAction.Wait -> "ا"
+        is MacroAction.Recording -> "ت"
     }
 
     private fun trimSpeed(value: Float): String = if (value % 1f == 0f) value.toInt().toString() else value.toString()
