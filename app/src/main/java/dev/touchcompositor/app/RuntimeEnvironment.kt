@@ -11,7 +11,7 @@ import rikka.shizuku.Shizuku
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Process-scoped Shizuku connection shared by the activity and floating tools. */
+/** اتصال Shizuku مشترك على مستوى العملية بين النشاط والأدوات العائمة. */
 class RuntimeEnvironment(context: Context) : AutoCloseable {
     companion object {
         private val lock = Any()
@@ -28,11 +28,11 @@ class RuntimeEnvironment(context: Context) : AutoCloseable {
         .daemon(false).processNameSuffix("touch_service").version(RuntimeBuild.BUILD)
 
     fun ensureReady(): Result<Ready> = runCatching {
-        check(Looper.myLooper() != Looper.getMainLooper()) { "请在后台启动运行环境" }
+        check(Looper.myLooper() != Looper.getMainLooper()) { "يرجى تشغيل البيئة في الخلفية" }
         synchronized(lock) {
-            check(available) { "请先在 Shizuku 中启动服务" }
-            check(authorized) { "请授权 Touch Compositor 使用 Shizuku" }
-            check(Shizuku.getVersion() >= 13) { "请更新 Shizuku 至 v13 或更新版本" }
+            check(available) { "يرجى تشغيل الخدمة في Shizuku أولاً" }
+            check(authorized) { "يرجى منح Touch Compositor إذن استخدام Shizuku" }
+            check(Shizuku.getVersion() >= 13) { "يرجى تحديث Shizuku إلى الإصدار v13 أو أحدث" }
             val remote = connectService()
             val owner = remote.identity()
             checkExistingRuntime(owner)?.let { return@synchronized Ready(it, false) }
@@ -44,7 +44,7 @@ class RuntimeEnvironment(context: Context) : AutoCloseable {
                 check(!state.startsWith("failed:") && state != "stopped") { state }
                 Thread.sleep(100)
             }
-            error("触控服务启动超时：${remote.status()}")
+            error("انتهت مهلة بدء خدمة اللمس: ${remote.status()}")
         }
     }
 
@@ -53,12 +53,11 @@ class RuntimeEnvironment(context: Context) : AutoCloseable {
             RuntimeClient().use { client ->
                 runCatching { client.connect(450); client.request("SHUTDOWN", 1000) }
             }
-            // Wait for the engine to release the hardware before starting again.
             val remote = service
             if (remote != null) {
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4)
                 while (remote.status().let { it != "stopped" && !it.startsWith("failed:") && it != "idle" }) {
-                    check(System.nanoTime() < deadline) { "旧触控服务尚未停止，请在 Shizuku 中重新启动服务" }
+                    check(System.nanoTime() < deadline) { "خدمة اللمس القديمة لم تتوقف بعد، يرجى إعادة تشغيل الخدمة في Shizuku" }
                     Thread.sleep(100)
                 }
             }
@@ -81,7 +80,7 @@ class RuntimeEnvironment(context: Context) : AutoCloseable {
         binding = connection
         try {
             Shizuku.bindUserService(args, connection)
-            check(latch.await(10, TimeUnit.SECONDS)) { "Shizuku 触控服务连接超时，请重试" }
+            check(latch.await(10, TimeUnit.SECONDS)) { "انتهت مهلة اتصال خدمة Shizuku، يرجى المحاولة مرة أخرى" }
             return checkNotNull(connected).also { service = it }
         } catch (t: Throwable) {
             runCatching { Shizuku.unbindUserService(args, connection, true) }
@@ -98,6 +97,5 @@ class RuntimeEnvironment(context: Context) : AutoCloseable {
         }.getOrNull()
     }
 
-    // Individual UI wrappers do not own the process-scoped UserService.
     override fun close() = Unit
 }
