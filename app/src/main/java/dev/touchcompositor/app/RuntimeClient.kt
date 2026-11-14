@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit
 class RuntimeClient(
     private val host: String = "127.0.0.1",
     private val port: Int = 28183,
+    private val token: String = "tc-local",
 ) : AutoCloseable {
     interface Listener {
         fun onConnected(ready: String)
@@ -37,8 +38,9 @@ class RuntimeClient(
             s.tcpNoDelay = true
             val reader = s.getInputStream().bufferedReader()
             val out = PrintWriter(s.getOutputStream().bufferedWriter(), true)
-            val ready = reader.readLine() ?: error("runtime closed before READY")
-            require(ready.startsWith("READY ")) { "unexpected runtime response: $ready" }
+            out.println("AUTH $token")
+            val ready = reader.readLine() ?: error("أغلقت بيئة التشغيل قبل READY")
+            require(ready.startsWith("READY ")) { "استجابة بيئة تشغيل غير متوقعة: $ready" }
             s.soTimeout = 0
             socket = s
             writer = out
@@ -57,29 +59,28 @@ class RuntimeClient(
 
     @Synchronized
     fun request(command: String, timeoutMs: Long = 3000): String {
-        check(isConnected) { "runtime is offline" }
+        check(isConnected) { "بيئة التشغيل غير متصلة" }
         responses.clear()
-        val out = writer ?: error("runtime writer missing")
+        val out = writer ?: error("كاتب بيئة التشغيل مفقود")
         out.println(command)
-        check(!out.checkError()) { "failed to send command" }
+        check(!out.checkError()) { "فشل إرسال الأمر" }
         val line = responses.poll(timeoutMs, TimeUnit.MILLISECONDS) ?: run {
-            // The protocol has no request IDs; a late reply must not satisfy the next command.
             closeInternal(true)
-            error("runtime response timeout")
+            error("انتهت مهلة استجابة بيئة التشغيل")
         }
         if (line.startsWith("ERR ")) error(line.removePrefix("ERR "))
-        require(line.startsWith("OK ")) { "unexpected response: $line" }
+        require(line.startsWith("OK ")) { "استجابة غير متوقعة: $line" }
         return line.removePrefix("OK ")
     }
 
     private fun readLoop(reader: BufferedReader, source: Socket) {
-        var reason = "runtime disconnected"
+        var reason = "بيئة التشغيل انقطعت"
         try {
             while (true) {
                 val line = reader.readLine() ?: break
                 when {
                     line.startsWith("EVENT ") -> listener?.onEvent(line.removePrefix("EVENT "))
-                    line == "BYE" -> { reason = "runtime stopped"; break }
+                    line == "BYE" -> { reason = "بيئة التشغيل توقفت"; break }
                     else -> responses.offer(line)
                 }
             }
