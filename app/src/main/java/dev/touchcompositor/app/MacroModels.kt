@@ -12,15 +12,15 @@ enum class MacroTriggerMode { CLICK_ONCE, HOLD_REPEAT }
 
 data class MacroTrigger(
     var mode: MacroTriggerMode = MacroTriggerMode.CLICK_ONCE,
-    /** Normalized trigger-button center in the full logical display. */
+    /** مركز زر المشغل (إحداثيات مطبعة على كامل الشاشة المنطقية). */
     var x: Float = 0.86f,
     var y: Float = 0.45f,
-    /** Visual trigger diameter. */
+    /** قطر زر المشغل المرئي. */
     var sizeDp: Float = 46f,
 )
 
 sealed class MacroAction {
-    /** Coordinates are normalized to the current logical screen. */
+    /** الإحداثيات مطبعة على الشاشة المنطقية الحالية. */
     data class Tap(var x: Float, var y: Float, var holdMs: Long = 70L) : MacroAction()
 
     data class Drag(
@@ -52,7 +52,7 @@ data class MacroProfile(
     val macros: MutableList<TouchMacro> = mutableListOf(),
 )
 
-/** Profile-aware macro persistence using canonical global-screen coordinates. */
+/** تخزين الإعدادات مع الإحداثيات العامة للشاشة. */
 class MacroStore(context: Context) {
     private val prefs = context.getSharedPreferences("touch_macros_v2", Context.MODE_PRIVATE)
     private val profilesKey = "profiles"
@@ -66,7 +66,7 @@ class MacroStore(context: Context) {
                 MutableList(array.length()) { i -> decodeProfile(array.getJSONObject(i)) }
             }.getOrElse { mutableListOf() }
         }
-        val profiles = mutableListOf(MacroProfile(name = "配置 1"))
+        val profiles = mutableListOf(MacroProfile(name = "الإعداد 1"))
         saveProfiles(profiles)
         saveActiveProfileId(profiles.first().id)
         return profiles
@@ -95,7 +95,7 @@ class MacroStore(context: Context) {
         val macros = MutableList(macrosArray.length()) { i -> decodeMacro(macrosArray.getJSONObject(i)) }
         return MacroProfile(
             id = obj.optString("id", UUID.randomUUID().toString()),
-            name = obj.optString("name", "配置"),
+            name = obj.optString("name", "إعداد"),
             macros = macros,
         )
     }
@@ -182,14 +182,14 @@ class MacroStore(context: Context) {
         }
         return TouchMacro(
             id = obj.optString("id", UUID.randomUUID().toString()),
-            name = obj.optString("name", "宏"),
+            name = obj.optString("name", "ماكرو"),
             trigger = trigger,
             actions = actions,
         )
     }
 }
 
-/** Sequential macro executor. Recording playback uses a second control connection so HOLD_REPEAT can stop immediately. */
+/** منفذ الماكرو المتسلسل. تشغيل التسجيل يستخدم اتصال تحكم ثانٍ حتى يمكن إيقاف HOLD_REPEAT فوراً. */
 class MacroRunner : AutoCloseable {
     interface Listener {
         fun onMacroStarted(name: String) {}
@@ -206,8 +206,8 @@ class MacroRunner : AutoCloseable {
 
     @Synchronized
     fun start(macro: TouchMacro, repeat: Boolean = false) {
-        check(!isRunning) { "macro already running" }
-        check(macro.actions.isNotEmpty()) { "macro has no actions" }
+        check(!isRunning) { "الماكرو قيد التشغيل بالفعل" }
+        check(macro.actions.isNotEmpty()) { "الماكرو لا يحتوي على إجراءات" }
         stopRequested.set(false)
         thread = Thread({ runMacro(macro, repeat) }, "touch-macro-runner").apply {
             isDaemon = true
@@ -254,7 +254,8 @@ class MacroRunner : AutoCloseable {
                 val pointerId = 10_001
                 execClient.request("DOWN_N $pointerId $x $y")
                 sleepInterruptibly(action.holdMs)
-                if (!stopRequested.get()) execClient.request("UP_N $pointerId $x $y")
+                // يجب إرسال UP_N دائماً، حتى لو تم إيقاف الماكرو، لمنع تعليق المؤشر
+                runCatching { execClient.request("UP_N $pointerId $x $y") }
             }
             is MacroAction.Drag -> {
                 val x1 = action.x1.coerceIn(0f, 1f)
@@ -263,19 +264,23 @@ class MacroRunner : AutoCloseable {
                 val y2 = action.y2.coerceIn(0f, 1f)
                 val pointerId = 10_001
                 execClient.request("DOWN_N $pointerId $x1 $y1")
-                val frames = ceil(action.durationMs / 16.0).toInt().coerceAtLeast(1)
-                val started = SystemClock.uptimeMillis()
-                for (i in 1..frames) {
-                    if (stopRequested.get()) break
-                    val t = i.toFloat() / frames.toFloat()
-                    val x = x1 + (x2 - x1) * t
-                    val y = y1 + (y2 - y1) * t
-                    execClient.request("MOVE_N $pointerId $x $y")
-                    val due = started + action.durationMs * i / frames
-                    val remain = due - SystemClock.uptimeMillis()
-                    if (remain > 0) sleepInterruptibly(remain)
+                try {
+                    val frames = ceil(action.durationMs / 16.0).toInt().coerceAtLeast(1)
+                    val started = SystemClock.uptimeMillis()
+                    for (i in 1..frames) {
+                        if (stopRequested.get()) break
+                        val t = i.toFloat() / frames.toFloat()
+                        val x = x1 + (x2 - x1) * t
+                        val y = y1 + (y2 - y1) * t
+                        execClient.request("MOVE_N $pointerId $x $y")
+                        val due = started + action.durationMs * i / frames
+                        val remain = due - SystemClock.uptimeMillis()
+                        if (remain > 0) sleepInterruptibly(remain)
+                    }
+                } finally {
+                    // دائماً أرسل UP_N في finally، حتى لو توقف الماكرو في منتصف السحب
+                    runCatching { execClient.request("UP_N $pointerId $x2 $y2") }
                 }
-                if (!stopRequested.get()) execClient.request("UP_N $pointerId $x2 $y2")
             }
             is MacroAction.Wait -> sleepInterruptibly(action.durationMs)
             is MacroAction.Recording -> {
@@ -284,7 +289,6 @@ class MacroRunner : AutoCloseable {
             }
         }
     }
-
 
     private fun ensureExecClient() {
         if (!execClient.isConnected) execClient.connect()
