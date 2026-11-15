@@ -27,11 +27,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 /**
- * Long-lived touch engine running under uid=shell.
+ * محرك اللمس طويل العمر الذي يعمل تحت uid=shell.
  *
- * The physical touchscreen is EVIOCGRAB'ed and replayed through [sink]. Synthetic
- * and playback pointers are inserted into that same MotionEvent stream, so adding
- * an automation pointer does not cancel an in-progress physical gesture.
+ * يتم EVIOCGRAB على شاشة اللمس الفيزيائية وإعادة تشغيلها عبر [sink]. يتم إدراج
+ * المؤشرات الاصطناعية ومؤشرات التشغيل في نفس دفق MotionEvent، بحيث لا تلغي
+ * إضافة مؤشر أتمتة إيماءة فيزيائية قيد التنفيذ.
  */
 class LiveTouchEngine(
     private val devicePath: String,
@@ -230,8 +230,9 @@ class LiveTouchEngine(
             PhysicalUiRouter.Contact(raw.slot, raw.trackingId, point.x, point.y)
         }).forEach { uiEventListener?.invoke(it) }
         updateConsumedTriggers(current)
+        // اللمسات التي تدخل مناطق التشغيل تُمرَّر أيضاً إلى اللعبة (شفافة)
         val replayCurrent = current
-            .filterKeys { it !in consumedTriggerSlots && !uiRouter.consumes(it) }
+            .filterKeys { !uiRouter.consumes(it) }
             .toMap(linkedMapOf())
 
         recordRawPhysical(replayCurrent, now)
@@ -258,7 +259,6 @@ class LiveTouchEngine(
             emittedIdentity = true
         }
 
-        // Update surviving physical contacts before any new pointer is emitted.
         replayCurrent.forEach { (slot, raw) ->
             val p = physical[slot]
             if (p != null && p.trackingId == raw.trackingId) {
@@ -300,9 +300,8 @@ class LiveTouchEngine(
 
         if (triggerRegions.isEmpty()) return
         current.forEach { (slot, raw) ->
-            if (slot in consumedTriggerSlots || uiRouter.consumes(slot)) return@forEach
-            val existing = physical[slot]
-            if (existing != null && existing.trackingId == raw.trackingId) return@forEach
+            if (slot in consumedTriggerSlots) return@forEach
+            if (uiRouter.consumes(slot)) return@forEach
             val logical = raw.toPointerState(-1)
             val region = triggerRegions.lastOrNull { it.contains(logical.x, logical.y) } ?: return@forEach
             consumedTriggerSlots[slot] = ConsumedTrigger(region.id, raw.trackingId)
@@ -341,8 +340,6 @@ class LiveTouchEngine(
         require(rotation in setOf(0, 90, 180, 270))
         synchronized(lock) {
             if (displayWidth == width && displayHeight == height && displayRotation == rotation) return
-            // Android cancels active gestures across a display rotation. Mirror that
-            // behavior, then the next evdev SYN_REPORT re-acquires held fingers.
             if (combinedStates().isNotEmpty()) {
                 runCatching {
                     sink.emit(ComposedFrame(TouchAction.CANCEL, combinedStates(), combinedStates().first().id, System.nanoTime()))
@@ -402,7 +399,7 @@ class LiveTouchEngine(
         }
     }
 
-    /** Safely releases only automation pointers; physical fingers remain uninterrupted. */
+    /** يحرر مؤشرات الأتمتة فقط بأمان؛ تبقى الأصابع الفيزيائية دون انقطاع. */
     override fun cancelAll() {
         synchronized(lock) { releaseOrigin(PointerOrigin.SYNTHETIC, System.nanoTime()) }
     }
@@ -442,7 +439,6 @@ class LiveTouchEngine(
         result
     }
 
-    /** Recorder is driven from raw physical frames and can exclude overlay gestures cleanly. */
     private fun recordRawPhysical(current: LinkedHashMap<Int, RawContact>, now: Long) {
         val r = recorder ?: return
         val removed = recordingRawLast.keys.toList().filter { slot ->
